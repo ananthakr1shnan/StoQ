@@ -35,10 +35,6 @@ co = cohere.Client(COHERE_API_KEY)
 samba = openai.OpenAI(api_key=SAMBA_API, base_url="https://api.sambanova.ai/v1")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# Initialize Flask app
-app = Flask(__name__)
-CORS(app)
-
 # Global state management
 class AppState:
     def __init__(self):
@@ -70,11 +66,13 @@ class Vectorstore:
         return co.embed(model="embed-english-light-v2.0", texts=[text]).embeddings[0]
 
 def initialize_vectorstore():
+    """Initialize the vectorstore with base documents."""
     print("Initializing vectorstore...")
     state.vectorstore = Vectorstore([{"title": "investopedia", "url": "https://www.investopedia.com/"}])
     state.initialized = True
 
 def ensure_stock_embedded(ticker: str) -> None:
+    """Ensure a stock's data is embedded in the vectorstore."""
     if not state.initialized:
         initialize_vectorstore()
     
@@ -94,92 +92,101 @@ def ensure_stock_embedded(ticker: str) -> None:
     else:
         print(f"Documents for {ticker} are already embedded.")
 
-@app.before_first_request
-def before_first_request():
-    if not state.initialized:
-        initialize_vectorstore()
-        ensure_stock_embedded("AAPL")
+def create_app():
+    """Create and configure the Flask application."""
+    app = Flask(__name__)
+    CORS(app)
 
-@app.route('/top_thirteen_f', methods=['GET', 'POST'])
-@lru_cache(maxsize=32)
-def top_thirteen_f():
-    holdings = get_top_thirteen_f()
-    return jsonify(holdings)
+    # Initialize state before first request
+    with app.app_context():
+        if not state.initialized:
+            initialize_vectorstore()
+            ensure_stock_embedded("AAPL")
 
-@app.route('/earnings_report', methods=['GET', 'POST'])
-@lru_cache(maxsize=32)
-def earnings_report():
-    ticker = request.args.get('ticker')
-    year = int(request.args.get('year'))
-    quarter = int(request.args.get('quarter'))
-    financials = get_earnings_report(ticker, year, quarter)
-    return jsonify(financials)
+    @app.route('/top_thirteen_f', methods=['GET', 'POST'])
+    @lru_cache(maxsize=32)
+    def top_thirteen_f():
+        holdings = get_top_thirteen_f()
+        return jsonify(holdings)
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    data = request.json
-    message = data.get('message')
-    chat_history = data.get('chat_history', [])
-    
-    if not message:
-        return jsonify({"error": "Message is required"}), 400
+    @app.route('/earnings_report', methods=['GET', 'POST'])
+    @lru_cache(maxsize=32)
+    def earnings_report():
+        ticker = request.args.get('ticker')
+        year = int(request.args.get('year'))
+        quarter = int(request.args.get('quarter'))
+        financials = get_earnings_report(ticker, year, quarter)
+        return jsonify(financials)
 
-    try:
-        ticker_response = co.chat(
-            model="command-r-plus",
-            preamble="Return only the ticker (2-4 characters) for the company mentioned",
-            message=message,
-            connectors=[{"id": "web-search"}]
-        )
-        ticker = ticker_response.text.strip().upper()
+    @app.route('/chat', methods=['POST'])
+    def chat():
+        data = request.json
+        message = data.get('message')
+        chat_history = data.get('chat_history', [])
+        
+        if not message:
+            return jsonify({"error": "Message is required"}), 400
 
-        ensure_stock_embedded(ticker)
+        try:
+            ticker_response = co.chat(
+                model="command-r-plus",
+                preamble="Return only the ticker (2-4 characters) for the company mentioned",
+                message=message,
+                connectors=[{"id": "web-search"}]
+            )
+            ticker = ticker_response.text.strip().upper()
 
-        search_response = co.chat(
-            message=message,
-            preamble="Generate search queries for the stock analysis",
-            model="command-r-plus",
-            search_queries_only=True,
-            chat_history=chat_history
-        )
+            ensure_stock_embedded(ticker)
 
-        messages = [
-            {
-                "role": "system",
-                "content": "You are an AI assistant specializing in stock analysis and financial information.",
-            },
-            *chat_history,
-            {
-                "role": "user",
-                "content": message,
-            }
-        ]
+            search_response = co.chat(
+                message=message,
+                preamble="Generate search queries for the stock analysis",
+                model="command-r-plus",
+                search_queries_only=True,
+                chat_history=chat_history
+            )
 
-        if search_response.search_queries:
-            documents = []
-            for query in search_response.search_queries:
-                documents.extend(state.vectorstore.retrieve(query.text))
-            
-            context = "\n".join(doc["text"] for doc in documents)
-            messages[0]["content"] += f"\nContext: {context}"
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are an AI assistant specializing in stock analysis and financial information.",
+                },
+                *chat_history,
+                {
+                    "role": "user",
+                    "content": message,
+                }
+            ]
 
-        completion = groq_client.chat.completions.create(
-            model="llama3-groq-70b-8192-tool-use-preview",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=4096
-        )
+            if search_response.search_queries:
+                documents = []
+                for query in search_response.search_queries:
+                    documents.extend(state.vectorstore.retrieve(query.text))
+                
+                context = "\n".join(doc["text"] for doc in documents)
+                messages[0]["content"] += f"\nContext: {context}"
 
-        return jsonify({
-            "response": completion.choices[0].message.content,
-            "citations": getattr(completion, 'citations', None)
-        })
+            completion = groq_client.chat.completions.create(
+                model="llama3-groq-70b-8192-tool-use-preview",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=4096
+            )
 
-    except Exception as e:
-        print(f"Error in chat processing: {e}")
-        return jsonify({"error": str(e)}), 500
+            return jsonify({
+                "response": completion.choices[0].message.content,
+                "citations": getattr(completion, 'citations', None)
+            })
+
+        except Exception as e:
+            print(f"Error in chat processing: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    return app
+
+# Create the application instance
+app = create_app()
 
 if __name__ == '__main__':
     print("Starting the server...")
-    initialize_vectorstore()
     app.run(debug=True, port=8081, use_reloader=False)
