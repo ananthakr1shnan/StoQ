@@ -22,7 +22,7 @@ We used a combination of cutting-edge technologies to bring Stoq to life:
 - **SambaNova Cloud:** Enabled high-speed data processing and real-time AI responses, ensuring an efficient and responsive user experience. Integrated Llama 90B Vision for graph visualization and Llama 3.1 8B for chatbot functionality.
 - **Autogen:** Powered autonomous agents guiding users through strategy creation, testing, and refinement.
 - **Cohere:** Used for embedding functions, translating natural language inputs into actionable insights.
-- **Perplexity:** Enhanced educational tools and strategy testing environments with data-driven contextual insights.
+- **Groq:** Enhanced educational tools and strategy testing environments with data-driven contextual insights.
 - **Next.js:** Built a clean, intuitive frontend with drag-and-drop tools and interactive prompts.
 - **Flask:** Supported backend operations, including user input processing, algorithm testing, and real-time feedback delivery.
 
