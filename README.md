@@ -57,7 +57,7 @@ We used a combination of cutting-edge technologies to bring Stoq to life:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-repo/stoq.git
+   git clone https://github.com/ananthakr1shnan/stoq.git
    cd stoq
    ```
 
