@@ -96,5 +96,5 @@ This project is licensed under the MIT License. See the LICENSE file for details
 - **SambaNova Cloud:** For their high-speed AI and vision model capabilities.
 - **Cohere:** For embedding functions.
 - **Autogen:** For autonomous agent frameworks.
-- **Perplexity:** For data-driven contextual insights.
+- **Groq:** For data-driven contextual insights.
 
